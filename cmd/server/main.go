@@ -42,15 +42,14 @@ func init() {
 }
 
 func main() {
-	_, cancel := context.WithCancel(ctx)
+	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
 
 	discordUserCommandUsecase := usecase.NewDiscordUserCommand(infrastructure.NewDiceRepository(), infrastructure.NewCharacterRepository(), infrastructure.NewSystemUserRepository(dbtx, ctx))
 
 	discordCommandInterfaces := interfaces.NewDiscordCommandInterfaces(discordUserCommandUsecase)
 
-	systemWSIncomingUsecase := usecase.NewSystemWSIncoming(infrastructure.NewDiceRepository())
-
-	p2pEarthquakeInterfaces := interfaces.NewP2PEarthquakeInterfaces(systemWSIncomingUsecase, *p2pEarthquakeConfig, ctx, cancel, *discordConfig)
+	p2pEarthquakeInterfaces := interfaces.NewP2PEarthquakeInterfaces(*p2pEarthquakeConfig, ctx, *discordConfig)
 
 	discordInterfaces := interfaces.NewDiscordInterfaces(discordCommandInterfaces, guildIDList, *discordConfig)
 
@@ -76,13 +75,18 @@ func main() {
 	discordInterfaces.AddMessageHandler(dg)
 	discordInterfaces.AddGuildLeaveHandler(dg)
 	discordInterfaces.AddComponentHandler(dg)
-	go p2pEarthquakeInterfaces.ReceiveEEWToDiscord(dg)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := p2pEarthquakeInterfaces.ReceiveEEWToDiscord(dg); err != nil {
+			log.Printf("EEW receiver: %v", err)
+		}
+	}()
 
 	fmt.Println("Bot is now running.")
 
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, syscall.SIGTERM)
-	<-sc
+	<-ctx.Done()
+	<-done
 	// discordInterfaces.DeleteApplicationCommands(dg)
 	dg.Close()
 	fmt.Println("Bot is shutdown.")

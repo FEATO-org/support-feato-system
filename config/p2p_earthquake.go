@@ -13,7 +13,7 @@ type P2PEarthquake struct {
 }
 
 func NewP2PEarthquake() *P2PEarthquake {
-	webSocketURL := "ws://" + BASE_URL + "/v2/ws"
+	webSocketURL := "wss://" + BASE_URL + "/v2/ws"
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
