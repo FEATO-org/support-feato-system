@@ -45,7 +45,7 @@ GitHub の自動生成機能に、直前の公開済み正式 Release の Git �
 
 ## 初回導入
 
-1. 導入 PR をレビューし、`develop` に取り込む。既定ブランチは `develop`。次に `develop` から `main` 向けの PR を準備し、CI と CodeQL を確認する。
+1. 導入 PR をレビューし、`develop` に取り込む。既定ブランチは `develop`。次に `develop` から `main` 向けの PR を準備し、CI と CodeQL を確認する。調査時点で既存の CodeQL Workflow は GitHub 上で `disabled_inactivity` だったため、管理者が Actions から再有効化し、解析結果を確認する。
 2. **main への導入 PR をマージする前に** 管理者が旧 **Create and publish a Docker image**（`upload.yml`、Workflow ID `56448257`）を無効化する。旧 run がすべて完了したことを確認し、過去 run の再実行も止める。既存の `:main` の Digest を記録しておく。新しい公開ジョブは旧 Workflow の停止と実行状況を確認できなければ停止する。
 3. 導入 PR を `main` に取り込む。両ブランチの Workflow、`main` の CI、および `main` への取り込みだけでは新しいイメージが公開されないことを確認する。
 4. `main` の **Release SFS** で `dry-run` を実行する。Job Summary で固定 SHA、CalVer、Go テスト、ビルド、OCI Digest、Notes プレビューの成功を確認する。Git タグ、GHCR タグ、GitHub Release に変化がないことを照合する。既存ブランチに Workflow が未導入の場合、この確認は導入後に実施する。

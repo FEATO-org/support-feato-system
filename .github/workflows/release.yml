@@ -193,6 +193,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           artifact-ids: ${{ needs.verify.outputs.artifact }}
+          merge-multiple: true
           path: ${{ runner.temp }}
       - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         if: needs.verify.outputs.build == 'true'
