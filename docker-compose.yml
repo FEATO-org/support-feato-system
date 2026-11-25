@@ -2,7 +2,7 @@ services:
   app:
     build:
       args:
-        GO_VERSION: "1.22.3"
+        GO_VERSION: "1.27.4"
     container_name: app
     working_dir: /opt/app
     env_file: .env
