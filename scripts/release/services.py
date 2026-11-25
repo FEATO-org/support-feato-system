@@ -155,7 +155,11 @@ class Registry:
             listing = json.loads(raw)
             if listing["name"] != PACKAGE:
                 raise ReleaseError("Unexpected repository in GHCR tag listing.")
-            tags.update(listing["tags"] or [])
+            page_tags = listing["tags"]
+            if page_tags is not None:
+                if not isinstance(page_tags, list) or not all(isinstance(tag, str) for tag in page_tags):
+                    raise ReleaseError("Invalid GHCR tag listing.")
+                tags.update(page_tags)
             link = headers.get("Link")
             if not link:
                 break

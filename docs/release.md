@@ -18,7 +18,7 @@ GitHub の **Actions → Release SFS → Run workflow** で実行ブランチに
 | `release` | `version` を空欄にする。手動実行時点の `main` の SHA を固定し、改めて採番する。時間が経過した場合は実行前に対象 SHA を確認する。 |
 | `resume` | 既に途中まで公開された `version` を入力する。Git タグまたは正式イメージから元の SHA を復元し、実行時の `main` の履歴に含まれることを確認する。 |
 
-CalVer は東京の日付を使う `YYYY-MM-DD.N`。Git タグ、GitHub Release、GHCR タグから同日の最大連番を調べ、1 を加える。初回は 1。採番後に日付が変わっても同じバージョンで処理する。正式公開前に状態を再確認する。通常リリースでは CalVer タグまたは正式イメージに対応する同一 SHA の再公開を拒否する。読み取り権限のジョブから見えない Release の下書きは、公開直前と Dry-run の Notes プレビュー前に書き込み権限のトークンで確認する。競合なら停止する。
+CalVer は東京の日付を使う `YYYY-MM-DD.N`。Git タグ、GitHub Release、GHCR タグから同日の最大連番を調べ、1 を加える。初回は 1。採番後に日付が変わっても同じバージョンで処理する。正式公開前に状態を再確認する。通常リリースでは CalVer タグまたは正式イメージに対応する同一 SHA の再公開を拒否する。計画ジョブは、読み取り権限では取得できない下書きも含めて採番する。公開直前の再確認で競合が見つかれば停止する。
 
 同じ Workflow の各モードは 1 つの concurrency group を共有する。実行中の run は継続する。待機中の run は後から投入された run に置き換わる場合があり、実行順は保証されない。Job Summary で実行状況を確認し、キャンセルされた依頼は必要に応じて再 dispatch する。
 
@@ -51,7 +51,7 @@ GitHub の自動生成機能に、直前の公開済み正式 Release の Git �
 4. `main` の **Release SFS** で `dry-run` を実行する。Job Summary で固定 SHA、CalVer、Go テスト、ビルド、OCI Digest、Notes プレビューの成功を確認する。Git タグ、GHCR タグ、GitHub Release に変化がないことを照合する。既存ブランチに Workflow が未導入の場合、この確認は導入後に実施する。
 5. 承認を得た正式公開枠で `release` を実行する。Job Summary、Git タグ、GitHub Release 本文、4 タグの Digest を照合する。正式参照を検証環境で pull し、運用チームとデプロイを調整する。正式公開の権限と GHCR 書き込みはこの段階で初めて実環境で実証される。
 
-権限は `GITHUB_TOKEN` を使用する。CI と計画・ビルドは `contents: read`。Dry-run の Notes ジョブは GitHub の generate-notes API に必要な `contents: write` だけを持つ。この API の返すプレビューは保存されない。公開ジョブは `contents: write`、`packages: write`、旧 Workflow 状態の取得に `actions: read` を使う。Actions のトークンで作った Git タグから別 Workflow が起動することには依存しない。既存 GHCR パッケージの **Manage Actions access** で SFS に Write があること、またはリポジトリからの権限継承を確認する。確認できない場合はパッケージ管理者に確認を依頼する。将来 CalVer 用タグ Ruleset を追加する場合は、この Workflow にタグ作成を許可する方法を管理者が決める。失敗時は権限や Ruleset を確認し、制限の迂回や既存タグの付け替えを避ける。
+権限は `GITHUB_TOKEN` を使用する。CI とビルドは `contents: read`。計画ジョブは下書きの参照と Dry-run の generate-notes API に必要な `contents: write` だけを持つ。この API の返すプレビューは保存されない。公開ジョブは `contents: write`、`packages: write`、旧 Workflow 状態の取得に `actions: read` を使う。Actions のトークンで作った Git タグから別 Workflow が起動することには依存しない。既存 GHCR パッケージの **Manage Actions access** で SFS に Write があること、またはリポジトリからの権限継承を確認する。確認できない場合はパッケージ管理者に確認を依頼する。将来 CalVer 用タグ Ruleset を追加する場合は、この Workflow にタグ作成を許可する方法を管理者が決める。失敗時は権限や Ruleset を確認し、制限の迂回や既存タグの付け替えを避ける。
 
 ## 障害復旧
 
