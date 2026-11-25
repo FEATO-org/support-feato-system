@@ -171,7 +171,7 @@ def previous_release(registry, state, version, sha, dispatch_sha):
     baseline_sha = state.refs.get(LEGACY_BASELINE)
     if baseline_sha and is_ancestor(require_sha(baseline_sha), sha):
         return LEGACY_BASELINE
-    if state.refs or state.releases:
+    if (set(state.refs) | set(state.releases)) - {version}:
         # With no explicit baseline, GitHub could select a failed or unrelated tag.
         raise ReleaseError("No safe first-release comparison. Check the legacy 0.1.0 tag and history.")
     return ""

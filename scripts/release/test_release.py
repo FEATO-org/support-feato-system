@@ -151,6 +151,12 @@ class PublicationTest(TestCase):
         with self.assertRaises(ReleaseError):
             self.publish()
 
+    def test_initial_release_with_no_git_or_release_history(self):
+        self.refs.clear()
+        release.publish(self.registry, "release", VERSION, SHA, "", SHA, "oci.tar")
+        self.assertNotIn("previous_tag_name", self.events[0][1])
+        self.assertEqual(self.registry.manifest("main"), MANIFEST)
+
     def test_formal_tag_appearing_after_plan_is_rejected(self):
         self.registry.manifests[VERSION] = MANIFEST
         with self.assertRaisesRegex(ReleaseError, "conflicts"):
@@ -298,7 +304,8 @@ class WorkflowTest(TestCase):
         workflow = (root / ".github/workflows/release.yml").read_text()
         self.assertIn("\nconcurrency:\n  group: sfs-container-release\n  cancel-in-progress: false", workflow)
         self.assertIn("(inputs.mode == 'release' || inputs.mode == 'resume')", workflow)
-        self.assertIn("if: inputs.mode == 'dry-run'\n    needs: verify", workflow)
+        self.assertIn("name: Generate GitHub Release Notes preview\n        if: inputs.mode == 'dry-run'", workflow)
+        self.assertIn("needs: [plan, verify]", workflow)
         self.assertNotIn("\n  push:", workflow)
         self.assertIn(
             "          artifact-ids: ${{ needs.verify.outputs.artifact }}\n          merge-multiple: true",
