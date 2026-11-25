@@ -235,6 +235,15 @@ class PublicationTest(TestCase):
             release.previous_release(self.registry, state, "2026-11-27.1", NEW_SHA, NEW_SHA), VERSION,
         )
 
+    def test_resume_stops_if_the_formal_digest_changed_after_planning(self):
+        self.refs[VERSION] = SHA
+        self.registry.manifests[VERSION] = MANIFEST
+        with self.assertRaisesRegex(ReleaseError, "digest changed"):
+            release.publish(self.registry, "resume", VERSION, SHA, "0.1.0", NEW_SHA, None,
+                            planned_digest=NEW_MANIFEST[0])
+        self.assertEqual(self.events, [])
+        self.assertEqual(self.registry.writes, [])
+
     def test_git_and_image_revision_mismatch_stops_before_writes(self):
         self.refs[VERSION] = NEW_SHA
         self.registry.manifests[VERSION] = MANIFEST

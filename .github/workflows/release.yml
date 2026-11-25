@@ -44,6 +44,7 @@ jobs:
       sha: ${{ steps.plan.outputs.sha }}
       previous: ${{ steps.plan.outputs.previous }}
       build: ${{ steps.plan.outputs.build }}
+      digest: ${{ steps.plan.outputs.digest }}
     steps:
       - name: Record execution and reject invalid refs
         run: |
@@ -215,6 +216,7 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
           TARGET_SHA: ${{ needs.plan.outputs.sha }}
           PREVIOUS: ${{ needs.plan.outputs.previous }}
+          PLANNED_DIGEST: ${{ needs.plan.outputs.digest }}
           IMAGE_ARCHIVE: ${{ needs.plan.outputs.build == 'true' && format('{0}/sfs.oci.tar', runner.temp) || '' }}
         run: python3 scripts/release/release.py publish
       - name: Summarize publication
