@@ -232,6 +232,7 @@ def plan(registry, mode, requested, dispatch_sha):
     return {
         "version": version, "sha": sha, "previous": previous,
         "build": "false" if manifest else "true",
+        "digest": manifest[0] if manifest else "",
     }
 
 
@@ -292,13 +293,15 @@ def ensure_tag(registry, tag, manifest, *, must_be_new=False):
         report(f"- Verified container tag: `{tag}`")
 
 
-def publish(registry, mode, version, sha, previous, dispatch_sha, archive):
+def publish(registry, mode, version, sha, previous, dispatch_sha, archive, *, planned_digest=None):
     state = State.load(registry)
     manifest, release = None, None
     if mode == "resume":
         actual_sha, manifest, release = inspect(registry, state, version, dispatch_sha)
         if actual_sha != sha:
             raise ReleaseError("The release target changed since planning.")
+        if planned_digest and (manifest is None or manifest[0] != planned_digest):
+            raise ReleaseError("The formal image digest changed since planning.")
     else:
         check_new(registry, state, sha, version)
     report(f"- Target commit: `{sha}`", f"- CalVer: `{version}`")
@@ -391,8 +394,11 @@ def main(action):
         report("- GitHub Release Notes preview generated successfully. No release was created.")
     elif action == "publish" and mode in ("release", "resume"):
         check_legacy_workflow()
+        planned_digest = os.environ.get("PLANNED_DIGEST")
+        if planned_digest:
+            require_digest(planned_digest)
         publish(Registry(write=True), mode, version, sha, previous, dispatch_sha,
-                os.environ.get("IMAGE_ARCHIVE"))
+                os.environ.get("IMAGE_ARCHIVE"), planned_digest=planned_digest)
     else:
         raise ReleaseError("Unexpected release action or mode.")
 
