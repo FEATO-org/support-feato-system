@@ -300,4 +300,8 @@ class WorkflowTest(TestCase):
         self.assertIn("(inputs.mode == 'release' || inputs.mode == 'resume')", workflow)
         self.assertIn("if: inputs.mode == 'dry-run'\n    needs: verify", workflow)
         self.assertNotIn("\n  push:", workflow)
+        self.assertIn(
+            "          artifact-ids: ${{ needs.verify.outputs.artifact }}\n          merge-multiple: true",
+            workflow,
+        )
         self.assertFalse((root / ".github/workflows/upload.yml").exists())
