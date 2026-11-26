@@ -43,11 +43,14 @@ func init() {
 
 func main() {
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer dbtx.Close()
 	defer cancel()
 
-	discordUserCommandUsecase := usecase.NewDiscordUserCommand(infrastructure.NewDiceRepository(), infrastructure.NewCharacterRepository(), infrastructure.NewSystemUserRepository(dbtx, ctx))
+	dice := usecase.NewDice()
+	character := usecase.NewCharacter(infrastructure.NewCharacterGenerator())
+	systemUser := usecase.NewSystemUser(infrastructure.NewSystemUserRepository(dbtx))
 
-	discordCommandInterfaces := interfaces.NewDiscordCommandInterfaces(discordUserCommandUsecase)
+	discordCommandInterfaces := interfaces.NewDiscordCommandInterfaces(ctx, dice, character, systemUser)
 
 	p2pEarthquakeInterfaces := interfaces.NewP2PEarthquakeInterfaces(*p2pEarthquakeConfig, ctx, *discordConfig)
 
