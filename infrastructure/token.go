@@ -77,21 +77,6 @@ func (tr *TokenRepository) Create(token *model.Token) (*model.Token, error) {
 	return token, nil
 }
 
-// Delete implements repository.TokenRepository.
-func (*TokenRepository) Delete(token *model.Token) error {
-	panic("unimplemented")
-}
-
-// FindByID implements repository.TokenRepository.
-func (*TokenRepository) FindByID(id int64) (*model.Token, error) {
-	panic("unimplemented")
-}
-
-// Update implements repository.TokenRepository.
-func (*TokenRepository) Update(token *model.Token) (*model.Token, error) {
-	panic("unimplemented")
-}
-
 func NewTokenRepository(db *sql.DB, ctx context.Context) repository.TokenRepository {
 	return &TokenRepository{
 		db:  db,

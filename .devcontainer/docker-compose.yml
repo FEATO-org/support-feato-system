@@ -21,6 +21,9 @@ services:
 
     init: true
 
+    secrets:
+      - google_secrets
+
     volumes:
       # Update this to wherever you want VS Code to mount the folder of your project
       - vscode-server-volume:/root/.vscode-server/extensions
@@ -37,3 +40,7 @@ services:
     command: /bin/sh -c "while sleep 1000; do :; done"
 volumes:
   vscode-server-volume: null
+
+secrets:
+  google_secrets:
+    file: ../secrets/credentials.json

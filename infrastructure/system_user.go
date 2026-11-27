@@ -11,15 +11,19 @@ import (
 )
 
 type SystemUserRepository struct {
-	db  *sql.DB
-	ctx context.Context
+	db *sql.DB
 }
 
 // Create implements repository.SystemUserRepository.
-func (su *SystemUserRepository) Create(systemUser *model.SystemUser) (*model.SystemUser, error) {
-	queries := sqlc.New(su.db)
+func (su *SystemUserRepository) Create(ctx context.Context, systemUser *model.SystemUser) (*model.SystemUser, error) {
+	tx, err := su.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	queries := sqlc.New(tx)
 
-	result, err := queries.CreateSystemUser(su.ctx, systemUser.DiscordID)
+	result, err := queries.CreateSystemUser(ctx, systemUser.DiscordID)
 	if err != nil {
 		return nil, err
 	}
@@ -32,9 +36,9 @@ func (su *SystemUserRepository) Create(systemUser *model.SystemUser) (*model.Sys
 	}
 
 	for _, guild := range systemUser.Guilds {
-		result, err := queries.FindByDiscordIDGuild(su.ctx, guild.DiscordID)
+		result, err := queries.FindByDiscordIDGuild(ctx, guild.DiscordID)
 		if errors.Is(err, sql.ErrNoRows) {
-			result, err := queries.CreateGuild(su.ctx, sqlc.CreateGuildParams{
+			created, err := queries.CreateGuild(ctx, sqlc.CreateGuildParams{
 				Name:      guild.Name,
 				DiscordID: guild.DiscordID,
 				SheetID: sql.NullString{
@@ -45,16 +49,13 @@ func (su *SystemUserRepository) Create(systemUser *model.SystemUser) (*model.Sys
 				return nil, err
 			}
 
-			id, err := result.LastInsertId()
+			id, err := created.LastInsertId()
 			if err != nil {
 				return nil, err
 			}
-			err = guild.Set(id, guild.Name, guild.DiscordID, guild.SheetID)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if err != nil {
+			result.ID = id
+			result.Name = guild.Name
+		} else if err != nil {
 			return nil, err
 		}
 
@@ -63,7 +64,7 @@ func (su *SystemUserRepository) Create(systemUser *model.SystemUser) (*model.Sys
 			return nil, err
 		}
 
-		_, err = queries.CreateSystemUserGuild(su.ctx, sqlc.CreateSystemUserGuildParams{
+		_, err = queries.CreateSystemUserGuild(ctx, sqlc.CreateSystemUserGuildParams{
 			SystemUserID: systemUser.Id,
 			GuildID:      guild.Id,
 		})
@@ -72,27 +73,12 @@ func (su *SystemUserRepository) Create(systemUser *model.SystemUser) (*model.Sys
 		}
 	}
 
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return systemUser, nil
 }
 
-// Delete implements repository.SystemUserRepository.
-func (*SystemUserRepository) Delete(systemUser *model.SystemUser) error {
-	panic("unimplemented")
-}
-
-// FindByID implements repository.SystemUserRepository.
-func (*SystemUserRepository) FindByID(id int64) (*model.SystemUser, error) {
-	panic("unimplemented")
-}
-
-// Update implements repository.SystemUserRepository.
-func (*SystemUserRepository) Update(systemUser *model.SystemUser) (*model.SystemUser, error) {
-	panic("unimplemented")
-}
-
-func NewSystemUserRepository(db *sql.DB, ctx context.Context) repository.SystemUserRepository {
-	return &SystemUserRepository{
-		db:  db,
-		ctx: ctx,
-	}
+func NewSystemUserRepository(db *sql.DB) repository.SystemUserRepository {
+	return &SystemUserRepository{db: db}
 }

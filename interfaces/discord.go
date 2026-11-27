@@ -72,7 +72,7 @@ func (di *discordInterfaces) AddGuildLeaveHandler(s *discordgo.Session) {
 			Color:     0xff00000,
 		})
 		if err != nil {
-			log.Fatalln(err)
+			log.Println(err)
 		}
 	})
 }

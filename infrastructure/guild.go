@@ -39,21 +39,6 @@ func (gr *GuildRepository) Create(guild *model.Guild) (*model.Guild, error) {
 	return guild, nil
 }
 
-// Delete implements repository.GuildRepository.
-func (*GuildRepository) Delete(guild *model.Guild) error {
-	panic("unimplemented")
-}
-
-// FindByID implements repository.GuildRepository.
-func (*GuildRepository) FindByID(id int64) (*model.Guild, error) {
-	panic("unimplemented")
-}
-
-// Update implements repository.GuildRepository.
-func (*GuildRepository) Update(guild *model.Guild) (*model.Guild, error) {
-	panic("unimplemented")
-}
-
 func NewGuildRepository(db *sql.DB, ctx context.Context) repository.GuildRepository {
 	return &GuildRepository{
 		db:  db,

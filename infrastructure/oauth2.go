@@ -1,4 +1,4 @@
-package interfaces
+package infrastructure
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func (gi *oauth2Interfaces) GetClient(token *oauth2.Token, authCode string) (*ht
 	if authCode == "" {
 		return gi.config.Client(gi.context, token), token, nil
 	} else if token == nil {
-		token, err := gi.config.Exchange(context.TODO(), authCode)
+		token, err := gi.config.Exchange(gi.context, authCode)
 		if err != nil {
 			return nil, nil, err
 		}

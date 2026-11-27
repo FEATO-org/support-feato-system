@@ -2,130 +2,118 @@ package interfaces
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"log"
 	"time"
 
 	"github.com/FEATO-org/support-feato-system/config"
 	"github.com/FEATO-org/support-feato-system/usecase"
-	"github.com/bwmarrin/discordgo"
 	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
 )
 
 type P2PEarthquakeInterfaces interface {
-	ReceiveEEWToDiscord(s *discordgo.Session) error
+	ReceiveEEW() error
 }
-
-type p2pEarthquakeInterfaces struct {
-	systemWSIncomingUsecase usecase.SystemWSIncomingUsecase
-	p2pEarthquakeConfig     config.P2PEarthquake
-	context                 context.Context
-	cancel                  context.CancelFunc
-	discordConfig           config.DiscordConfig
-}
-
 type eew struct {
-	Id         string `json:"id"`
-	Code       int32  `json:"code"`
-	Time       string `json:"time"`
-	Test       bool   `json:"test"`
-	Earthquake struct {
-		OriginTime  string `json:"originTime"`
-		ArrivalTime string `json:"arrivalTime"`
-		Condition   string `json:"condition"`
-		Hypocenter  struct {
-			Name       string `json:"name"`
-			ReduceName string `json:"reduceName"`
-			Latitude   int32  `json:"latitude"`
-			Longitude  int32  `json:"longitude"`
-			Depth      int32  `json:"depth"`
-			Magnitude  int32  `json:"magnitude"`
-		}
-	}
-	Issue struct {
+	ID        string `json:"id"`
+	Code      int    `json:"code"`
+	Time      string `json:"time"`
+	Test      bool   `json:"test"`
+	Cancelled bool   `json:"cancelled"`
+	Issue     struct {
 		Time    string `json:"time"`
-		EventId string `json:"eventId"`
+		EventID string `json:"eventId"`
 		Serial  string `json:"serial"`
-	}
-	Cancelled bool `json:"cancelled"`
-	Area      struct {
-		Pref        string `json:"pref"`
-		Name        string `json:"name"`
-		ScaleFrom   int32  `json:"scaleFrom"`
-		ScaleTo     int32  `json:"scaleTo"`
-		KindCode    string `json:"kindCode"`
-		ArrivalTime string `json:"arrivalTime"`
-	}
+	} `json:"issue"`
+	Earthquake *struct {
+		Hypocenter struct {
+			Name      string   `json:"name"`
+			Latitude  *float64 `json:"latitude"`
+			Longitude *float64 `json:"longitude"`
+			Depth     *float64 `json:"depth"`
+			Magnitude *float64 `json:"magnitude"`
+		} `json:"hypocenter"`
+	} `json:"earthquake"`
+	Areas []struct {
+		Name        string   `json:"name"`
+		ScaleFrom   *float64 `json:"scaleFrom"`
+		ScaleTo     *float64 `json:"scaleTo"`
+		ArrivalTime *string  `json:"arrivalTime"`
+	} `json:"areas"`
+}
+type p2pEarthquakeInterfaces struct {
+	config    config.P2PEarthquake
+	ctx       context.Context
+	processor *usecase.EEW
 }
 
-// ReceiveEEW implements P2PEqInterfaces.
-func (pi *p2pEarthquakeInterfaces) ReceiveEEWToDiscord(s *discordgo.Session) error {
-	defer pi.cancel()
-
-	conn, _, err := websocket.Dial(pi.context, pi.p2pEarthquakeConfig.WebSocketURL, &websocket.DialOptions{
-		HTTPClient: pi.p2pEarthquakeConfig.Client,
-	})
-	if err != nil {
-		log.Fatal("WebSocket connection error:", err)
+func NewP2PEarthquakeInterfaces(c config.P2PEarthquake, ctx context.Context, processor *usecase.EEW) P2PEarthquakeInterfaces {
+	return &p2pEarthquakeInterfaces{config: c, ctx: ctx, processor: processor}
+}
+func (p *p2pEarthquakeInterfaces) ReceiveEEW() error {
+	delay := time.Second
+	for p.ctx.Err() == nil {
+		conn, _, err := websocket.Dial(p.ctx, p.config.WebSocketURL, &websocket.DialOptions{HTTPClient: p.config.Client})
+		if err == nil {
+			delay = time.Second
+			err = p.read(p.ctx, conn)
+			conn.Close(websocket.StatusNormalClosure, "")
+		}
+		if p.ctx.Err() != nil {
+			return nil
+		}
+		log.Printf("EEW WebSocket disconnected: %v", err)
+		timer := time.NewTimer(delay)
+		select {
+		case <-p.ctx.Done():
+			timer.Stop()
+			return nil
+		case <-timer.C:
+		}
+		if delay < 30*time.Second {
+			delay *= 2
+			if delay > 30*time.Second {
+				delay = 30 * time.Second
+			}
+		}
 	}
-	defer conn.Close(websocket.StatusInternalError, "Connection closed")
-
-	// メッセージの受信ループ
+	return nil
+}
+func (p *p2pEarthquakeInterfaces) read(ctx context.Context, conn *websocket.Conn) error {
 	for {
-		var message eew
-		err := wsjson.Read(pi.context, conn, &message)
-		if err != nil {
-			log.Fatal("Error reading message:", err)
-		}
-
-		// メッセージの処理
-		fmt.Println("Received message:", message)
-		// Areapeers Userquake UserquakeEvaluationを無視する
-		if message.Code == 555 || message.Code == 561 || message.Code == 9611 {
-			return nil
-		}
-		if message.Test {
-			pi.systemWSIncomingUsecase.ReceiveEEW(message, true)
-			return nil
-		}
-		pi.systemWSIncomingUsecase.ReceiveEEW(message, false)
-		jst := time.FixedZone("Asia/Tokyo", 9*60*60)
-		t, err := time.ParseInLocation("2006/01/02 15:04:05.000", message.Time, jst)
+		_, data, err := conn.Read(ctx)
 		if err != nil {
 			return err
 		}
-		title := "地震情報を受信しました（実験版）"
-		if message.Cancelled {
-			title = "地震情報取消報を受信しました（実験版）"
+		var header struct {
+			Code int `json:"code"`
 		}
-		_, err = s.ChannelMessageSendEmbed(pi.discordConfig.NotifyChannelID, &discordgo.MessageEmbed{
-			Title:       title,
-			Description: interfaceToString(message),
-			Timestamp:   t.UTC().Format(time.RFC3339),
-			Color:       0xffff00,
-			Provider: &discordgo.MessageEmbedProvider{
-				URL:  "https://www.p2pquake.net/app/web/",
-				Name: "P2P 地震情報",
-			},
-			Author: &discordgo.MessageEmbedAuthor{
-				URL:     "https://www.p2pquake.net/app/web/",
-				Name:    "P2P 地震情報",
-				IconURL: "https://www.p2pquake.net/images/favicon.png",
-			},
-		})
-		if err != nil {
-			log.Fatal("Error sending message:", err)
+		if err = json.Unmarshal(data, &header); err != nil {
+			log.Printf("Invalid WebSocket message: %v", err)
+			continue
+		}
+		if header.Code != 556 {
+			continue
+		}
+		var m eew
+		if err = json.Unmarshal(data, &m); err != nil {
+			log.Printf("Invalid EEW message: %v", err)
+			continue
+		}
+		if err = p.processor.Handle(toEEWEvent(m), time.Now()); err != nil {
+			log.Printf("EEW processing failed: %v", err)
 		}
 	}
 }
 
-func NewP2PEarthquakeInterfaces(systemWSIncomingUsecase usecase.SystemWSIncomingUsecase, p2pEarthquakeConfig config.P2PEarthquake, context context.Context, cancel context.CancelFunc, discordConfig config.DiscordConfig) P2PEarthquakeInterfaces {
-	return &p2pEarthquakeInterfaces{
-		systemWSIncomingUsecase: systemWSIncomingUsecase,
-		p2pEarthquakeConfig:     p2pEarthquakeConfig,
-		context:                 context,
-		cancel:                  cancel,
-		discordConfig:           discordConfig,
+func toEEWEvent(m eew) usecase.EEWEvent {
+	out := usecase.EEWEvent{ID: m.ID, Time: m.Time, Test: m.Test, Cancelled: m.Cancelled, Issue: usecase.EEWIssue{Time: m.Issue.Time, EventID: m.Issue.EventID, Serial: m.Issue.Serial}}
+	if m.Earthquake != nil {
+		h := m.Earthquake.Hypocenter
+		out.Earthquake = &usecase.EEWEarthquake{Hypocenter: usecase.EEWHypocenter{Name: h.Name, Latitude: h.Latitude, Longitude: h.Longitude, Depth: h.Depth, Magnitude: h.Magnitude}}
 	}
+	for _, a := range m.Areas {
+		out.Areas = append(out.Areas, usecase.EEWArea{Name: a.Name, ScaleFrom: a.ScaleFrom, ScaleTo: a.ScaleTo, ArrivalTime: a.ArrivalTime})
+	}
+	return out
 }
