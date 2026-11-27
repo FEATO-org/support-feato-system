@@ -19,7 +19,6 @@ require (
 
 require (
 	github.com/go-sql-driver/mysql v1.10.2
-	github.com/google/wire v0.7.0
 	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/net v0.63.0 // indirect

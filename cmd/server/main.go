@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -15,39 +14,36 @@ import (
 	"github.com/FEATO-org/support-feato-system/interfaces"
 	"github.com/FEATO-org/support-feato-system/usecase"
 	"github.com/bwmarrin/discordgo"
-	"golang.org/x/oauth2"
 )
-
-var (
-	discordToken        string
-	guildIDList         []string
-	ctx                 context.Context
-	dbtx                *sql.DB
-	oauthConfig         *oauth2.Config
-	discordConfig       *config.DiscordConfig
-	p2pEarthquakeConfig *config.P2PEarthquake
-)
-
-func init() {
-	discordToken = os.Getenv("DISCORD_TOKEN")
-	// 仮置き
-	guildIDList = strings.Split(os.Getenv("GUILD_IDS"), ",")
-
-	ctx = context.Background()
-	dbtx = config.NewDB()
-	oauthConfig = config.NewOauth2()
-	discordConfig = config.NewDiscordConfig()
-	p2pEarthquakeConfig = config.NewP2PEarthquake()
-	log.SetFlags(log.Llongfile)
-}
 
 func main() {
-	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	log.SetFlags(log.Llongfile)
+	if err := run(); err != nil {
+		log.Printf("server stopped: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	dbtx, err := config.NewDB()
+	if err != nil {
+		return err
+	}
+	defer dbtx.Close()
+	discordToken := os.Getenv("DISCORD_TOKEN")
+	guildIDList := strings.Split(os.Getenv("GUILD_IDS"), ",")
+	discordConfig := config.NewDiscordConfig()
+	p2pEarthquakeConfig := config.NewP2PEarthquake()
+	// Keep loading the existing OAuth configuration at startup.
+	_ = config.NewOauth2()
 
-	discordUserCommandUsecase := usecase.NewDiscordUserCommand(infrastructure.NewDiceRepository(), infrastructure.NewCharacterRepository(), infrastructure.NewSystemUserRepository(dbtx, ctx))
+	dice := usecase.NewDice()
+	character := usecase.NewCharacter(infrastructure.NewCharacterGenerator())
+	systemUser := usecase.NewSystemUser(infrastructure.NewSystemUserRepository(dbtx))
 
-	discordCommandInterfaces := interfaces.NewDiscordCommandInterfaces(discordUserCommandUsecase)
+	discordCommandInterfaces := interfaces.NewDiscordCommandInterfaces(ctx, dice, character, systemUser)
 
 	p2pEarthquakeInterfaces := interfaces.NewP2PEarthquakeInterfaces(*p2pEarthquakeConfig, ctx, *discordConfig)
 
@@ -56,16 +52,14 @@ func main() {
 	// discordへの接続と初期化処理
 	dg, err := discordgo.New("Bot " + discordToken)
 	if err != nil {
-		fmt.Println("error creating Discord session,", err)
-		return
+		return fmt.Errorf("create Discord session: %w", err)
 	}
 	dg.AddHandlerOnce(func(s *discordgo.Session, r *discordgo.Ready) {
 		log.Printf("Logged in as: %v#%v", s.State.User.Username, s.State.User.Discriminator)
 	})
 	err = dg.Open()
 	if err != nil {
-		fmt.Println("error opening connection,", err)
-		return
+		return fmt.Errorf("open Discord session: %w", err)
 	}
 	fmt.Println("Bot open connection.  Press CTRL-C to exit.")
 
@@ -90,4 +84,5 @@ func main() {
 	// discordInterfaces.DeleteApplicationCommands(dg)
 	dg.Close()
 	fmt.Println("Bot is shutdown.")
+	return nil
 }

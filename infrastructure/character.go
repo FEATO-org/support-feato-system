@@ -4,18 +4,17 @@ import (
 	"errors"
 
 	"github.com/FEATO-org/support-feato-system/domain/model"
-	"github.com/FEATO-org/support-feato-system/domain/repository"
 	"github.com/mattn/go-gimei"
 )
 
-type CharacterRepository struct {
+type CharacterGenerator struct {
 }
 
-func NewCharacterRepository() repository.CharacterRepository {
-	return &CharacterRepository{}
+func NewCharacterGenerator() *CharacterGenerator {
+	return &CharacterGenerator{}
 }
 
-func (cr *CharacterRepository) Create(character *model.Character) (*model.Character, error) {
+func (cr *CharacterGenerator) Generate(character *model.Character) (*model.Character, error) {
 	var name *gimei.Name
 	if character.GetGender() == "" {
 		name = gimei.NewName()

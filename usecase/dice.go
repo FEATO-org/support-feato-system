@@ -1,25 +1,43 @@
-package infrastructure
+package usecase
 
 import (
 	"errors"
+	"github.com/FEATO-org/support-feato-system/domain/model"
+	"golang.org/x/text/width"
 	"math/rand"
 	"strconv"
 	"strings"
-	"time"
-
-	"github.com/FEATO-org/support-feato-system/domain/model"
-	"github.com/FEATO-org/support-feato-system/domain/repository"
 )
 
-type DiceRepository struct {
+type Dice struct{ random func(int64) int64 }
+
+func NewDice() *Dice { return &Dice{random: rand.Int63n} }
+
+func (du *Dice) DiceRoll(query string) (*model.Dice, error) {
+	// 正規化
+	normalizeQuery := strings.ToLower(query)
+	normalizeQuery = width.Narrow.String(normalizeQuery)
+	// バリデーション
+	slice := strings.Split(normalizeQuery, "")
+	len := len(slice)
+	for i := 0; i < len; i++ {
+		if !strings.ContainsAny(slice[i], "0123456789d+") {
+			return nil, errors.New("想定外の文字がダイスに指定されました")
+		}
+	}
+	diceModel, err := model.NewDice(normalizeQuery, "", 0)
+	if err != nil {
+		return nil, err
+	}
+	dice, err := du.roll(diceModel)
+	if err != nil {
+		return nil, err
+	}
+	return dice, nil
 }
 
-func NewDiceRepository() repository.DiceRepository {
-	return &DiceRepository{}
-}
-
-func (dr *DiceRepository) Roll(dice *model.Dice) (*model.Dice, error) {
-	array, err := diceRoll(dice.GetQuery())
+func (du *Dice) roll(dice *model.Dice) (*model.Dice, error) {
+	array, err := diceRoll(dice.GetQuery(), du.random)
 	if err != nil {
 		return nil, err
 	}
@@ -36,10 +54,9 @@ func (dr *DiceRepository) Roll(dice *model.Dice) (*model.Dice, error) {
 }
 
 // ダイスを振り、結果を配列で返す
-func diceRoll(query string) ([]int64, error) {
+func diceRoll(query string, random func(int64) int64) ([]int64, error) {
 	// すべて加算の前提のためダイスや足す数の区切りの判別に使う
 	diceArray := strings.Split(query, "+")
-	rand.Seed(time.Now().UnixNano())
 	// 各ダイスの結果を格納する
 	var calcArray []int64
 
@@ -60,7 +77,7 @@ func diceRoll(query string) ([]int64, error) {
 				return nil, errors.New("Error!　ダイスの個数は1以上を指定してください")
 			}
 			for i := 0; i < count; i++ {
-				calcArray = append(calcArray, rand.Int63n(int64(dice))+1)
+				calcArray = append(calcArray, random(int64(dice))+1)
 			}
 			continue
 		}

@@ -1,6 +1,7 @@
 package interfaces
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -16,7 +17,10 @@ type DiscordCommandInterfaces interface {
 }
 
 type discordCommandInterfaces struct {
-	discordUserCommandUsecase usecase.DiscordUserCommandUsecase
+	ctx        context.Context
+	dice       *usecase.Dice
+	character  *usecase.Character
+	systemUser *usecase.SystemUser
 }
 
 // BuildMessageHandlers implements DiscordCommandInterfaces.
@@ -84,7 +88,7 @@ func (di *discordCommandInterfaces) BuildCommandHandlers() map[string]func(s *di
 				optionMap[opt.Name] = opt
 			}
 			if option, ok := optionMap["dice-option"]; ok {
-				dice, err = di.discordUserCommandUsecase.DiceRoll(option.StringValue())
+				dice, err = di.dice.DiceRoll(option.StringValue())
 			} else {
 				err = errors.New("ダイスのオプショナルが指定されませんでした")
 			}
@@ -113,12 +117,13 @@ func (di *discordCommandInterfaces) BuildCommandHandlers() map[string]func(s *di
 				optionMap[opt.Name] = opt
 			}
 			if option, ok := optionMap["gender"]; ok {
-				character, err = di.discordUserCommandUsecase.CharacterGenerate(option.StringValue())
+				character, err = di.character.CharacterGenerate(option.StringValue())
 			} else {
-				character, err = di.discordUserCommandUsecase.CharacterGenerate("")
+				character, err = di.character.CharacterGenerate("")
 			}
 			if err != nil {
 				ServerErrorInteractionRespond(err, s, i)
+				return
 			}
 
 			var messageBuilder strings.Builder
@@ -145,7 +150,7 @@ func (di *discordCommandInterfaces) BuildCommandHandlers() map[string]func(s *di
 				ServerErrorInteractionRespond(err, s, i)
 				return
 			}
-			_, err = di.discordUserCommandUsecase.CreateSystemUser(getUserID(i), guild.ID, "", guild.Name)
+			_, err = di.systemUser.CreateSystemUser(di.ctx, getUserID(i), guild.ID, "", guild.Name)
 			if err != nil {
 				ServerErrorInteractionRespond(err, s, i)
 				return
@@ -164,10 +169,8 @@ func (di *discordCommandInterfaces) BuildCommandHandlers() map[string]func(s *di
 	}
 }
 
-func NewDiscordCommandInterfaces(discordUserCommandUsecase usecase.DiscordUserCommandUsecase) DiscordCommandInterfaces {
-	return &discordCommandInterfaces{
-		discordUserCommandUsecase: discordUserCommandUsecase,
-	}
+func NewDiscordCommandInterfaces(ctx context.Context, dice *usecase.Dice, character *usecase.Character, systemUser *usecase.SystemUser) DiscordCommandInterfaces {
+	return &discordCommandInterfaces{ctx: ctx, dice: dice, character: character, systemUser: systemUser}
 }
 
 func getUserID(i *discordgo.InteractionCreate) string {
