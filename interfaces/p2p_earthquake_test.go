@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/FEATO-org/support-feato-system/config"
+	"github.com/FEATO-org/support-feato-system/infrastructure"
+	"github.com/FEATO-org/support-feato-system/usecase"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -37,7 +39,7 @@ func (f *fakeEEW) ChannelMessageEditComplex(m *discordgo.MessageEdit, _ ...disco
 	return &discordgo.Message{}, nil
 }
 func TestEEWLifecycle(t *testing.T) {
-	now := time.Date(2026, 1, 2, 3, 4, 5, 0, japanTime)
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.FixedZone("JST", 9*60*60))
 	fixture := `{"id":"one","code":556,"time":"2026/01/02 03:04:05.123","test":true,"issue":{"time":"2026/01/02 03:04:05","eventId":"event","serial":"9"},"cancelled":false,"earthquake":{"hypocenter":{"name":"震源","latitude":44.9,"longitude":142.1,"depth":10.0,"magnitude":5.5}},"areas":[{"name":"地域","scaleFrom":45.0,"scaleTo":50.0,"arrivalTime":null}]}`
 	var m eew
 	if err := json.Unmarshal([]byte(fixture), &m); err != nil {
@@ -46,11 +48,15 @@ func TestEEWLifecycle(t *testing.T) {
 	if len(m.Areas) != 1 || m.Areas[0].ArrivalTime != nil || *m.Earthquake.Hypocenter.Magnitude != 5.5 {
 		t.Fatal("fixture decoding failed")
 	}
-	p := NewP2PEarthquakeInterfaces(config.P2PEarthquake{}, context.Background(), config.DiscordConfig{NotifyChannelID: "channel"}).(*p2pEarthquakeInterfaces)
+	converted := toEEWEvent(m)
+	if converted.Issue.EventID != "event" || !converted.Test || converted.Earthquake == nil || *converted.Earthquake.Hypocenter.Magnitude != 5.5 || len(converted.Areas) != 1 || *converted.Areas[0].ScaleTo != 50 {
+		t.Fatal("EEW conversion lost data")
+	}
 	f := &fakeEEW{}
+	processor := usecase.NewEEW(infrastructure.NewEEWDiscordNotifier(f, "channel"))
 	run := func() {
 		t.Helper()
-		if err := p.handle(f, m, now); err != nil {
+		if err := processor.Handle(toEEWEvent(m), now); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -94,14 +100,13 @@ func TestEEWLifecycle(t *testing.T) {
 	if f.edits != 2 {
 		t.Fatal("update after cancellation")
 	}
-	p.handle(f, m, now.Add(25*time.Hour))
-	if len(p.events) != 0 {
-		t.Fatal("expired event")
+	if err := processor.Handle(toEEWEvent(m), now.Add(25*time.Hour)); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestReadSkipsOtherCodes(t *testing.T) {
-	now := time.Now().In(japanTime)
+	now := time.Now().In(time.FixedZone("JST", 9*60*60))
 	stamp := now.Format("2006/01/02 15:04:05")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, nil)
@@ -120,9 +125,9 @@ func TestReadSkipsOtherCodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close(websocket.StatusNormalClosure, "")
-	p := NewP2PEarthquakeInterfaces(config.P2PEarthquake{}, ctx, config.DiscordConfig{}).(*p2pEarthquakeInterfaces)
 	f := &fakeEEW{}
-	_ = p.read(ctx, c, f)
+	p := NewP2PEarthquakeInterfaces(config.P2PEarthquake{}, ctx, usecase.NewEEW(infrastructure.NewEEWDiscordNotifier(f, "channel"))).(*p2pEarthquakeInterfaces)
+	_ = p.read(ctx, c)
 	if f.sends != 1 {
 		t.Fatalf("got %d notifications", f.sends)
 	}
@@ -150,9 +155,9 @@ func TestReconnectAndCancel(t *testing.T) {
 	}))
 	defer server.Close()
 	ctx, cancel := context.WithCancel(context.Background())
-	p := NewP2PEarthquakeInterfaces(config.P2PEarthquake{WebSocketURL: "ws" + strings.TrimPrefix(server.URL, "http")}, ctx, config.DiscordConfig{})
+	p := NewP2PEarthquakeInterfaces(config.P2PEarthquake{WebSocketURL: "ws" + strings.TrimPrefix(server.URL, "http")}, ctx, nil)
 	done := make(chan struct{})
-	go func() { p.ReceiveEEWToDiscord(nil); close(done) }()
+	go func() { p.ReceiveEEW(); close(done) }()
 	select {
 	case <-connected:
 	case <-time.After(5 * time.Second):

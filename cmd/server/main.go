@@ -45,8 +45,6 @@ func run() error {
 
 	discordCommandInterfaces := interfaces.NewDiscordCommandInterfaces(ctx, dice, character, systemUser)
 
-	p2pEarthquakeInterfaces := interfaces.NewP2PEarthquakeInterfaces(*p2pEarthquakeConfig, ctx, *discordConfig)
-
 	discordInterfaces := interfaces.NewDiscordInterfaces(discordCommandInterfaces, guildIDList, *discordConfig)
 
 	// discordへの接続と初期化処理
@@ -63,6 +61,9 @@ func run() error {
 	}
 	fmt.Println("Bot open connection.  Press CTRL-C to exit.")
 
+	notifier := infrastructure.NewEEWDiscordNotifier(dg, discordConfig.NotifyChannelID)
+	p2pEarthquakeInterfaces := interfaces.NewP2PEarthquakeInterfaces(*p2pEarthquakeConfig, ctx, usecase.NewEEW(notifier))
+
 	// コマンドやハンドラーの登録
 	discordInterfaces.CreateApplicationCommand(dg)
 	discordInterfaces.AddCommandHandler(dg)
@@ -72,7 +73,7 @@ func run() error {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if err := p2pEarthquakeInterfaces.ReceiveEEWToDiscord(dg); err != nil {
+		if err := p2pEarthquakeInterfaces.ReceiveEEW(); err != nil {
 			log.Printf("EEW receiver: %v", err)
 		}
 	}()
